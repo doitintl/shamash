@@ -39,6 +39,7 @@ class Scale:
             raise ScalingException("Cluster not found!")
         self.new_workers = 0
         self.new_preemptible = 0
+        self.total = 0
         self.dp = dataproc_monitoring.DataProc(data['cluster'])
         self.scale_to = data['scale_to']
         self.scaling_direction = data['scaling_direction']
@@ -74,14 +75,17 @@ class Scale:
         if self.scale_to != -1:
             self.new_workers = self.MinInstances
             self.new_preemptible = 0
-            logging.debug("New workers {} New preemptibel {}".format(
-                self.new_workers, self.new_preemptible))
+            logging.debug(
+                "No allocated memory lets go down! New workers {} New preemptibel {}".
+                format(self.new_workers, self.new_preemptible))
             return
 
         # no more memory lets get some lets at 4 nodes
         if self.dp.get_yarn_memory_available_percentage() == 0:
             add_more = NO_MORE_MEMORY_STEP
+            logging.debug("no more memory lets get {}  nodes".format(add_more))
             scale_ratio = (float(self.cluster_settings.PreemptiblePct) / 100.0)
+            logging.debug("scale_ratio {}".format(scale_ratio))
 
             self.new_workers = int(
                 round((
@@ -92,8 +96,9 @@ class Scale:
 
             if (self.new_preemptible + self.new_workers) > self.MaxInstances:
                 self.calc_max_nodes_combination()
-            logging.debug("New workers {} New preemptibel {}".format(
-                self.new_workers, self.new_preemptible))
+            logging.debug("New workers {} New preemptibel {} old {} {} ".format(
+                self.new_workers, self.new_preemptible,
+                self.current_worker_nodes, self.current_preemptible_nodes))
             return
 
         self.calc_scale()
@@ -130,6 +135,10 @@ class Scale:
                     self.new_workers, self.new_preemptible))
         logging.info("Updating cluster from {} to {} nodes".format(
             self.current_nodes, self.new_preemptible + self.new_workers))
+
+        # make sure that we have the correct ratio between 2 type of workers
+        self.preserve_ratio()
+
         # do the scaling
         try:
             self.dp.patch_cluster(self.new_workers, self.new_preemptible)
@@ -159,7 +168,7 @@ class Scale:
             slope, intercept = np.polyfit(x, y, 1)
             logging.debug("Slope is {}".format(slope))
         except np.RankWarning:
-            # not enough data so add remove by 1
+            # not enough data so add remove by 2
             if self.scaling_direction == 'up':
                 slope = 1
             else:
@@ -177,6 +186,7 @@ class Scale:
         workers(Ratio+1) = MaxNodes
         workers = MaxNodes/(Ratio+1)
         """
+        logging.debug("Calculating max combination")
         if self.preemptibles_to_workers_ratio != -1:
             new_workers = self.MaxInstances / (
                 self.preemptibles_to_workers_ratio + 1)
@@ -227,3 +237,31 @@ class Scale:
             self.new_workers, self.new_preemptible))
         self.new_preemptible = int(self.new_preemptible)
         self.new_workers = int(self.new_workers)
+
+    def preserve_ratio(self):
+        """
+        Make sure that we have the correct ratio between the 2 types of workers
+        """
+        logging.debug("Before adjustment {} {} ".format(self.new_workers,
+                                                        self.new_preemptible))
+        total_new = self.new_workers + self.new_preemptible
+        scale_ratio = (float(self.cluster_settings.PreemptiblePct) / 100.0)
+        self.new_preemptible = int(scale_ratio * total_new)
+        self.new_workers = int((1 - scale_ratio) * total_new)
+
+        # Make sure that we have the minimum normal workers
+        if self.new_workers < self.MinInstances:
+            logging.debug("Adjusting minimum as well {}".format(
+                self.new_workers))
+            diff = self.MinInstances - self.new_workers
+            self.new_workers = self.MinInstances
+            self.new_preemptible = self.new_preemptible - diff
+        """ Make sure that we didn't fuck up and we have the requested number of 
+            preemptible workers"""
+        if total_new > self.new_workers + self.new_preemptible:
+            logging.debug("Adjusting number of p workers from {}".format(self.new_preemptible))
+            diff = total_new - (self.new_workers + self.new_preemptible)
+            self.new_preemptible = self.new_preemptible + diff
+
+        logging.debug("After adjustment {} {} ".format(self.new_workers,
+                                                       self.new_preemptible))

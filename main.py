@@ -43,7 +43,6 @@ def create_app():
     pubsub.pull(client, 'monitoring',
                 "https://{}/get_monitoring_data".format(hostname))
     pubsub.pull(client, 'scaling', "https://{}/scale".format(hostname))
-    pubsub.pull(client, 'mysub', "https://{}/scale".format(hostname))
 
 
 create_app()
