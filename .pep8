@@ -1,0 +1,25 @@
+[pep8]
+# Autopep8 will not fix following errors
+# E226 Missing whitespace around arithmetic operator
+# E301 expected 1 blank line, found 0
+# E731 Do not assign a lambda expression, use a def
+ignore = E301,E226,E731
+
+[flake8]
+# flake8 will ignore following errors
+# D100 Missing docstring in public module
+# D101 Missing docstring in public class
+# D102 Missing docstring in public method
+# D103 Missing docstring in public function
+# D104 Missing docstring in public package
+# D105 Missing docstring in magic method
+# D106 Missing docstring in public nested class
+# D107 Missing docstring in __init__
+# D202 No blank lines allowed after function docstring
+# D204 1 blank line required after class docstring
+# D400 First line should end with a period
+# D401 First line should be in imperative mood
+# E226 Missing whitespace around arithmetic operator
+# E301 expected 1 blank line, found 0
+ignore = D100,D101,D102,D103,D104,D105,D106,D107,D202,D204,D400,D401,E301,E226
+exclude = .git, .tox

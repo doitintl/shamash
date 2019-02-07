@@ -1,0 +1,19 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v1.2.3
+    hooks:
+      - id: check-added-large-files
+        stages:
+          - commit
+  - repo: git@github.com:Viralize/viralize-git-hooks.git
+    rev: 1.2.9
+    hooks:
+      - id: add-jira-id
+        stages:
+          - commit-msg
+      - id: isort
+        stages:
+          - commit
+      - id: flake8
+        stages:
+          - commit
