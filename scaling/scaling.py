@@ -57,6 +57,11 @@ class Scale(object):
 
         try:
             self.cluster_status = self.dataproc.get_cluster_status()
+        except dataproc_monitoring.DataProcException as e:
+            logging.error(e)
+            raise e
+
+        try:
             self.current_nodes = \
                 int(self.dataproc.get_yarn_metric('yarn-nodes-active'))
         except dataproc_monitoring.DataProcException as e:
