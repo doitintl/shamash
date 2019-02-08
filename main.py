@@ -85,11 +85,11 @@ def check_load():
     check cluster stats"""
     clusters = settings.get_all_clusters_settings()
     for cluster in clusters.iter():
-        if cluster.Enabled :
+        if cluster.Enabled:
             task = taskqueue.add(queue_name='vr-shamash',
-                             url="/monitors",
-                             method='GET',
-                             params={'cluster_name': cluster.Cluster})
+                                 url="/monitors",
+                                 method='GET',
+                                 params={'cluster_name': cluster.Cluster})
             logging.debug('Task %s enqueued, ETA %s.', task.name, task.eta)
         else:
             logging.debug("Cluster %s is disabled.", cluster.Cluster)

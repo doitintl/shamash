@@ -75,7 +75,6 @@ class DataProc(object):
         """Get status of the cluster.running updating etc."""
         try:
             cluster_data = self.__get_cluster_data()
-
         except (HttpError, KeyError) as e:
             logging.error(e)
             raise DataProcException(e)
