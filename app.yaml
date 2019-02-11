@@ -14,4 +14,3 @@ libraries:
   version: latest
 - name: numpy
   version: "1.6.1"
-
