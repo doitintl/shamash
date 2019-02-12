@@ -7,7 +7,16 @@ from model import settings
 from monitoring import metrics
 from util import pubsub
 
+
 SCALING_TOPIC = 'shamash-scaling'
+
+sh = logging.StreamHandler() # Log to stderr
+sh.setLevel(logging.DEBUG)
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+sh.setFormatter(formatter)
+logger = logging.getLogger(__name__)
+logger.addHandler(sh)
 
 
 def trigger_scaling(direction):
@@ -16,13 +25,13 @@ def trigger_scaling(direction):
 
     :param direction:
     """
-    logging.info('Trigger Scaling %s', direction)
+    logger.info('Trigger Scaling %s', direction)
     msg = {'messages': [{'data': base64.b64encode(json.dumps(direction))}]}
     pubsub_client = pubsub.get_pubsub_client()
     try:
         pubsub.publish(pubsub_client, msg, SCALING_TOPIC)
     except pubsub.PubSubException as e:
-        logging.error(e)
+        logger.error(e)
 
 
 def should_scale(payload):
@@ -45,7 +54,7 @@ def should_scale(payload):
     s = settings.get_cluster_settings(cluster_name)
     for st in s:
         cluster_settings = st
-    logging.info(
+    logger.info(
         'Cluster %s YARNMemAvailPct %s ContainerPendingRatio %s number of '
         'nodes %s', cluster_name, yarn_memory_available_percentage,
         container_pending_ratio, number_of_nodes)
@@ -68,30 +77,34 @@ def should_scale(payload):
     if container_pending_ratio > cluster_settings.UpContainerPendingRatio:
         scaling_direction = 'up'
         containerpendingratio = container_pending_ratio
-        logging.info('container_pending_ratio (%s) > UpContainerPengingRatio (%s), '
-                     'set scale_direction to \'up\'', container_pending_ratio,
-                     cluster_settings.UpContainerPendingRatio)
+        logger.info('container_pending_ratio (%s) > UpContainerPengingRatio (%s), '
+                    'set scale_direction to \'up\'', container_pending_ratio,
+                    cluster_settings.UpContainerPendingRatio)
     elif container_pending_ratio < cluster_settings.DownContainerPendingRatio:
         scaling_direction = 'down'
         containerpendingratio = container_pending_ratio
-        logging.info('container_pending_ratio (%s) < UpContainerPengingRatio (%s), '
-                     'set scale_direction to \'down\'', container_pending_ratio,
-                     cluster_settings.UpContainerPendingRatio)
+        logger.info('container_pending_ratio (%s) < UpContainerPengingRatio (%s), '
+                    'set scale_direction to \'down\'', container_pending_ratio,
+                    cluster_settings.UpContainerPendingRatio)
     elif yarn_memory_available_percentage == 1:
-        logging.info('Yarn memory available percentage == 1')
+        logger.info('Yarn memory available percentage == 1')
         if number_of_nodes > cluster_settings.MinInstances:
-            logging.info('Number of nodes bigger than max instances, set downscaling to %s',
-                         cluster_settings.MinInstances)
+            logger.info('Number of nodes bigger than max instances, set downscaling to %s',
+                        cluster_settings.MinInstances)
             scaling_direction = 'down'
             scale_to = cluster_settings.MinInstances
     # We don't have enough memory lets go up
     elif yarn_memory_available_percentage < cluster_settings.UpYARNMemAvailPct:
-        logging.info('We don\'t have enough memory lets go up')
+        logger.debug('yarn_memory_available_percentage: %s',
+                     yarn_memory_available_percentage)
+        logger.debug('cluster_settings.UpYARNMemAvailPct: %s',
+                     cluster_settings.UpYARNMemAvailPct)
+        logger.info('We don\'t have enough memory lets go up')
         scaling_direction = 'up'
     # we have too much memory  :)
     elif yarn_memory_available_percentage > \
             cluster_settings.DownYARNMemAvailePct:
-        logging.info(' we have too much memory lets go down')
+        logger.info(' we have too much memory lets go down')
         scaling_direction = 'down'
     body = {
         'cluster': cluster_name,

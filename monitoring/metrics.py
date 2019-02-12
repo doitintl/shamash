@@ -9,9 +9,18 @@ from googleapiclient.errors import HttpError
 
 from util import utils
 
+
 SCOPES = ('https://www.googleapis.com/auth/monitoring',
           'https://www.googleapis.com/auth/cloud-platform')
 CREDENTIALS = app_engine.Credentials(scopes=SCOPES)
+
+sh = logging.StreamHandler() # Log to stderr
+sh.setLevel(logging.DEBUG)
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+sh.setFormatter(formatter)
+logger = logging.getLogger(__name__)
+logger.addHandler(sh)
 
 
 def format_rfc3339(datetime_instance=None):
@@ -109,7 +118,7 @@ class Metrics(object):
             _do_request()
             return True
         except HttpError as e:
-            logging.error(e)
+            logger.error(e)
             return False
 
     def read_timeseries(self, custom_metric_type, minutes):
@@ -152,7 +161,7 @@ class Metrics(object):
                 out.extend(response.get('timeSeries', []))
                 next_token = response.get('nextPageToken')
         except HttpError as e:
-            logging.info(e)
+            logger.info(e)
         return out
 
     def _create_custom_metric(self, custom_metric_type):
@@ -177,7 +186,7 @@ class Metrics(object):
         try:
             _do_request()
         except HttpError as e:
-            logging.error(e)
+            logger.error(e)
         return
 
     def _custom_metric_exists(self, custom_metric_type):
@@ -194,5 +203,5 @@ class Metrics(object):
             _do_request()
             return True
         except HttpError as e:
-            logging.error(e)
+            logger.error(e)
             return False

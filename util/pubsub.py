@@ -8,11 +8,20 @@ from googleapiclient.errors import HttpError
 
 from util import utils
 
+
 PUBSUB_SCOPES = [
     'https://www.googleapis.com/auth/pubsub',
     'https://www.googleapis.com/auth/cloud-platform'
 ]
 CREDENTIALS = app_engine.Credentials(scopes=PUBSUB_SCOPES)
+
+sh = logging.StreamHandler() # Log to stderr
+sh.setLevel(logging.DEBUG)
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+sh.setFormatter(formatter)
+logger = logging.getLogger(__name__)
+logger.addHandler(sh)
 
 
 class PubSubException(Exception):
@@ -44,7 +53,7 @@ def publish(client, body, topic):
     try:
         _do_request()
     except HttpError as e:
-        logging.error(e)
+        logger.error(e)
         raise PubSubException(e)
 
 
@@ -80,7 +89,7 @@ def create_subscriptions(client, sub, topic):
         if e.resp.status == 404:
             _do_create_request()
         else:
-            logging.error(e)
+            logger.error(e)
             raise PubSubException(e)
 
 
@@ -111,7 +120,7 @@ def create_topic(client, topic):
         if e.resp.status == 404:
             _do_create_request()
         else:
-            logging.error(e)
+            logger.error(e)
             raise PubSubException(e)
 
 
@@ -140,6 +149,6 @@ def pull(client, sub, endpoint):
         _do_request()
     except HttpError as e:
 
-        logging.error(e)
+        logger.error(e)
         return 'Error', 500
     return 'ok, 204'

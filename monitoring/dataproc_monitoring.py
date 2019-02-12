@@ -11,11 +11,20 @@ from googleapiclient.errors import HttpError
 from model import settings
 from util import pubsub, utils
 
+
 SCOPES = ['https://www.googleapis.com/auth/cloud-platform']
 
 MONITORING_TOPIC = 'shamash-monitoring'
 
 CREDENTIALS = app_engine.Credentials(scopes=SCOPES)
+
+sh = logging.StreamHandler() # Log to stderr
+sh.setLevel(logging.DEBUG)
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+sh.setFormatter(formatter)
+logger = logging.getLogger(__name__)
+logger.addHandler(sh)
 
 
 class DataProcException(Exception):
@@ -66,7 +75,7 @@ class DataProc(object):
         try:
             res = _do_request()
         except HttpError as e:
-            logging.error(e)
+            logger.error(e)
             raise e
         _validate_json(res)
         return res
@@ -76,7 +85,7 @@ class DataProc(object):
         try:
             cluster_data = self.__get_cluster_data()
         except (HttpError, KeyError) as e:
-            logging.error(e)
+            logger.error(e)
             raise DataProcException(e)
         else:
             status = cluster_data['status']['state']
@@ -99,7 +108,7 @@ class DataProc(object):
                 return 0
             return int(yarn_memory_mb_available) / int(total_memory)
         except DataProcException as e:
-            logging.error(e)
+            logger.error(e)
             raise
 
     def get_container_pending_ratio(self):
@@ -122,7 +131,7 @@ class DataProc(object):
 
             return yarn_containers_pending / yarn_container_allocated
         except DataProcException as e:
-            logging.error(e)
+            logger.error(e)
             raise
 
     def get_vcores_pending_ratio(self):
@@ -145,7 +154,7 @@ class DataProc(object):
 
             return yarn_vcores_pending / yarn_vcores_allocated
         except DataProcException as e:
-            logging.error(e)
+            logger.error(e)
             raise
 
     def get_yarn_metric(self, metric_name):
@@ -159,7 +168,7 @@ class DataProc(object):
             res = self.__get_cluster_data()
             metric = int(res['metrics']['yarnMetrics'][metric_name])
         except (HttpError, KeyError) as e:
-            logging.error(e)
+            logger.error(e)
             raise DataProcException(e)
         return metric
 
@@ -174,7 +183,7 @@ class DataProc(object):
         try:
             res = self.__get_cluster_data()
         except HttpError as e:
-            logging.error(e)
+            logger.error(e)
             raise DataProcException(e)
         if res.get('config') is not None:
             if res.get('config').get('secondaryWorkerConfig') is not None:
@@ -186,7 +195,7 @@ class DataProc(object):
 
     def patch_cluster(self, worker_nodes, preemptible_nodes):
         """Update number of nodes in a cluster."""
-        logging.debug("Wants %s %s got %s %s", worker_nodes,
+        logger.debug("Wants %s %s got %s %s", worker_nodes,
                       preemptible_nodes,
                       self.get_number_of_workers(),
                       self.get_number_of_preemptible_workers())
@@ -241,7 +250,7 @@ class DataProc(object):
         try:
             res = self.__get_cluster_data()
         except (HttpError, KeyError) as e:
-            logging.error(e)
+            logger.error(e)
             raise DataProcException(e)
         else:
             nodes = int(res['config']['workerConfig']['numInstances'])
@@ -270,7 +279,7 @@ class DataProc(object):
                 monitor_data['preemptible_nodes'] = int(
                     self.get_number_of_preemptible_workers())
         except DataProcException as e:
-            logging.error(e)
+            logger.error(e)
             return 'Error', 500
         msg = {
             'messages': [{
@@ -278,13 +287,13 @@ class DataProc(object):
             }]
         }
 
-        logging.debug('Monitor data for %s is %s', self.cluster_name,
+        logger.debug('Monitor data for %s is %s', self.cluster_name,
                       json.dumps(monitor_data))
         pubsub_client = pubsub.get_pubsub_client()
         try:
             pubsub.publish(pubsub_client, msg, MONITORING_TOPIC)
         except pubsub.PubSubException as e:
-            logging.error(e)
+            logger.error(e)
             return 'Error', 500
         return 'OK', 204
 
@@ -304,7 +313,7 @@ class DataProc(object):
 
             return yarn_memory_mb_allocated, yarn_memory_mb_pending
         except DataProcException as e:
-            logging.error(e)
+            logger.error(e)
             raise
 
     def get_container_data(self):
@@ -330,5 +339,5 @@ class DataProc(object):
                 yarn_vcores_pending, yarn_nodes_active
 
         except DataProcException as e:
-            logging.error(e)
+            logger.error(e)
             raise

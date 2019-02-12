@@ -6,6 +6,15 @@ import os
 from google.appengine.api import app_identity
 
 
+sh = logging.StreamHandler() # Log to stderr
+sh.setLevel(logging.DEBUG)
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+sh.setFormatter(formatter)
+logger = logging.getLogger(__name__)
+logger.addHandler(sh)
+
+
 def detect_gae():
     """Determine whether or not we're running on GAE.
 
@@ -20,7 +29,7 @@ def detect_gae():
 
 
 def _get_project_id():
-    logging.info("-------------------Running Localy--------------------")
+    logger.info("-------------------Running Localy--------------------")
     with open('config.json', 'r') as config_file:
         config = json.load(config_file)
     return config['project']

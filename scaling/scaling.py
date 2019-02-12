@@ -9,7 +9,16 @@ from google.appengine.api import taskqueue
 from model import settings
 from monitoring import dataproc_monitoring, metrics
 
+
 TIME_SERIES_HISTORY_IN_MINUTES = 60
+
+sh = logging.StreamHandler() # Log to stderr
+sh.setLevel(logging.DEBUG)
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+sh.setFormatter(formatter)
+logger = logging.getLogger(__name__)
+logger.addHandler(sh)
 
 
 class ScalingException(Exception):
@@ -58,14 +67,14 @@ class Scale(object):
         try:
             self.cluster_status = self.dataproc.get_cluster_status()
         except dataproc_monitoring.DataProcException as e:
-            logging.error(e)
+            logger.error(e)
             raise e
 
         try:
             self.current_nodes = \
                 int(self.dataproc.get_yarn_metric('yarn-nodes-active'))
         except dataproc_monitoring.DataProcException as e:
-            logging.error(e)
+            logger.error(e)
             raise e
 
     def calc_how_many(self):
@@ -78,23 +87,28 @@ class Scale(object):
         # If none of the following condition is matched no scale should be happen
         # so set by default total to current nodes
         self.total = self.current_nodes
+        logger.debug('Called how main new nodes we need')
+        logger.debug('self.scale: %s, self.containerpendingratio:'
+                     '%s, self.use_memory: %s',
+                     self.scale_to, self.containerpendingratio,
+                     self.use_memory)
         # No allocated memory so we don't need any workers above the
         # bare minimum
         if self.scale_to != -1:
-            logging.info("self.scale_to != -1")
+            logger.info("self.scale_to != -1")
             if self.cluster_settings.AddRemoveDownDelta != 0:
                 self.total = max(self.current_nodes -
                                  self.cluster_settings.AddRemoveDownDelta,
                                  self.cluster_settings.MinInstances)
             else:
                 self.total = self.min_instances
-            logging.debug('No allocated memory lets go down! New workers %s'
-                          ' New preemptibel', self.total)
+            logger.debug('No allocated memory lets go down! New workers %s'
+                         ' New preemptiable', self.total)
             return
 
         # pending containers are waiting....
         if self.containerpendingratio != -1:
-            logging.info("self.containerpendingratio != -1")
+            logger.info("self.containerpendingratio != -1")
             if self.scaling_direction == 'up':
                 direction = 1
             else:
@@ -111,20 +125,20 @@ class Scale(object):
                 self.total = (int(yarn_vcores_allocated) +
                               int(yarn_vcores_pending)) / ratio
             delta_nodes = abs(self.total - yarn_nodes_active)
-            logging.debug(
+            logger.debug(
                 'yarn_vcores_total %s yarn_vcores_allocated %s pending %s '
                 'ratio %s current %s delta %s total %s', yarn_vcores_total,
                 yarn_vcores_allocated, yarn_vcores_pending, ratio,
                 yarn_nodes_active, delta_nodes * direction, self.total)
-            logging.debug('Need more containers! New workers %s  prev %s',
-                          self.total, self.current_nodes)
+            logger.debug('Need more containers! New workers %s  prev %s',
+                         self.total, self.current_nodes)
             return
 
         # no more memory lets get some  nodes. calculate how many memory each
         # node uses. Then calculate how many nodes we need by memory
         # consumption
         if self.use_memory:
-            logging.info("no more mem")
+            logger.info("no more mem")
             if self.dataproc.get_yarn_memory_available_percentage() == 0:
                 yarn_memory_mb_allocated, yarn_memory_mb_pending = \
                     self.dataproc.get_memory_data()
@@ -138,15 +152,16 @@ class Scale(object):
                         self.cluster_settings.AddRemoveUpDelta
                 else:
                     self.total = int(self.current_nodes * factor)
-                logging.debug(
+                logger.debug(
                     'yarn_memory_mb_allocated %s pending %s ratio %s factor %s'
                     ' current %s total %s', yarn_memory_mb_allocated,
                     yarn_memory_mb_pending, ratio, factor, self.current_nodes,
                     self.total)
-                logging.debug('No More Mem! New workers %s  prev %s',
-                              self.total, self.current_nodes)
+                logger.debug('No More Mem! New workers %s  prev %s',
+                             self.total, self.current_nodes)
                 return
             self.calc_scale()
+        logger.debug('End of how main new nodes we need')
 
     def do_scale(self):
         """
@@ -154,13 +169,15 @@ class Scale(object):
 
         :return:
         """
-        logging.debug('Starting do_scale %s', self.current_nodes)
+        logger.debug('Starting do_scale %s', self.current_nodes)
         self.calc_how_many()
+        logger.debug('Minimun between total: %s and max_instances: %s',
+                     self.total, self.max_instances)
         self.total = min(self.total, self.max_instances)
-        logging.info("Scaling to workers %s", self.total)
+        logger.info("Scaling to workers %s", self.total)
 
         if self.total == self.current_nodes:
-            logging.debug('Not Modified')
+            logger.debug('Not Modified')
             return 'Not Modified', 200
 
         # make sure that we have the correct ratio between 2 type of workers
@@ -177,8 +194,8 @@ class Scale(object):
                                  'new_workers': new_workers,
                                  'new_preemptible': new_preemptible
                              })
-        logging.debug('Task %s enqueued, ETA %s Cluster %s', task.name,
-                      task.eta, self.cluster_name)
+        logger.debug('Task %s enqueued, ETA %s Cluster %s', task.name,
+                     task.eta, self.cluster_name)
         return 'ok', 204
 
     def calc_slope(self, minuets):
@@ -187,7 +204,7 @@ class Scale(object):
 
         :param: minuets how long to go back in time
         """
-        logging.info("calc slope")
+        logger.info("calc slope")
         met = metrics.Metrics(self.cluster_name)
         series = met.read_timeseries('YARNMemoryAvailablePercentage', minuets)
         retlist = []
@@ -201,15 +218,15 @@ class Scale(object):
             i = i - 1
         try:
             slope, intercept = np.polyfit(x, y, 1)
-            logging.debug('Slope is %s', slope)
+            logger.debug('Slope is %s', slope)
         except np.RankWarning:
             # not enough data so add remove by 2
             if self.scaling_direction == 'up':
                 slope = 1
             else:
                 slope = -1
-            logging.debug('No Data slope is %s', slope)
-        logging.info("Slope %s", str(slope))
+            logger.debug('No Data slope is %s', slope)
+        logger.info("Slope %s", str(slope))
         return slope
 
     def calc_scale(self):
@@ -222,7 +239,7 @@ class Scale(object):
         sl = self.calc_slope(TIME_SERIES_HISTORY_IN_MINUTES)
         if sl != 0:
             slope = (1 / sl)
-            logging.debug('Slope is %s', slope)
+            logger.debug('Slope is %s', slope)
             if slope > 0:
                 if self.cluster_settings.AddRemoveUpDelta != 0:
                     self.total = self.total + \
@@ -235,10 +252,10 @@ class Scale(object):
                         self.cluster_settings.AddRemoveDownDelta
                 else:
                     self.total = self.total + slope
-            logging.debug('New workers %s  prev %s', self.total,
-                          self.current_nodes)
+            logger.debug('New workers %s  prev %s', self.total,
+                         self.current_nodes)
 
-        logging.info('New workers %s prev %s', self.total, self.current_nodes)
+        logger.info('New workers %s prev %s', self.total, self.current_nodes)
 
     def preserve_ratio(self):
         """
@@ -249,12 +266,12 @@ class Scale(object):
         scale_ratio = (float(self.cluster_settings.PreemptiblePct) / 100.0)
         new_preemptible = int(round(scale_ratio * self.total))
         new_workers = int(round((1 - scale_ratio) * self.total))
-        logging.debug('new_workers %s new_preemptible %s', new_workers,
-                      new_preemptible)
+        logger.debug('new_workers %s new_preemptible %s', new_workers,
+                     new_preemptible)
 
         # Make sure that we have the minimum normal workers
         if new_workers < self.min_instances:
-            logging.debug('Adjusting minimum as well %s', new_workers)
+            logger.debug('Adjusting minimum as well %s', new_workers)
             diff = self.min_instances - new_workers
             new_workers = self.min_instances
             new_preemptible = new_preemptible - diff
@@ -262,11 +279,11 @@ class Scale(object):
         # Make sure that we didn't fuck up and we have the requested number of
         # preemptible workers
         if self.total > new_workers + new_preemptible:
-            logging.debug('Adjusting number of preemptible workers to %s',
-                          new_preemptible)
+            logger.debug('Adjusting number of preemptible workers to %s',
+                         new_preemptible)
             diff = self.total - (new_workers + new_preemptible)
             new_preemptible = new_preemptible + diff
 
         new_preemptible = max(0, new_preemptible)
-        logging.debug('After adjustment %s %s ', new_workers, new_preemptible)
+        logger.debug('After adjustment %s %s ', new_workers, new_preemptible)
         return new_workers, new_preemptible
